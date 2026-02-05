@@ -40,7 +40,7 @@ export default function HomePage() {
               <div className="bg-white p-6 rounded-daikin shadow-md">
                 <h3 className="mb-4">Energy Efficient</h3>
                 <p className="text-daikin-mediumGray">
-                  Daikin systems designed for Arizona's climate and maximum efficiency.
+                  Daikin systems designed for Arizona&rsquo;s climate and maximum efficiency.
                 </p>
               </div>
               
