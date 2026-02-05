@@ -1,0 +1,60 @@
+name: Sitemap Discovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      logVerbosity:
+        description: 'Enable detailed logging'
+        required: false
+        default: 'normal'
+        type: choice
+        options:
+          - normal
+          - verbose
+
+jobs:
+  discover_urls:
+    name: Analyze Sitemap Structure
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Execute sitemap discovery
+        run: node scripts/discover-sitemaps.js
+        env:
+          LOG_LEVEL: ${{ inputs.logVerbosity }}
+      
+      - name: Upload URL inventory JSON
+        uses: actions/upload-artifact@v4
+        with:
+          name: url-inventory-json
+          path: artifacts/url-inventory.json
+          retention-days: 30
+      
+      - name: Upload URL inventory CSV
+        uses: actions/upload-artifact@v4
+        with:
+          name: url-inventory-csv
+          path: artifacts/url-inventory.csv
+          retention-days: 30
+      
+      - name: Upload sitemap counts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sitemap-counts
+          path: artifacts/sitemap-counts.json
+          retention-days: 30
+      
+      - name: Display discovery summary
+        run: |
+          echo "=== Discovery Summary ==="
+          if [ -f artifacts/sitemap-counts.json ]; then
+            cat artifacts/sitemap-counts.json
+          fi
