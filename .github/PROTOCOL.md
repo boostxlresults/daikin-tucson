@@ -54,7 +54,7 @@ daikin-tucson/
 ## Technology Stack
 
 ### Core Technologies (Required)
-- **Next.js 14**: Using Pages Router architecture
+- **Next.js 15**: Using Pages Router architecture
 - **React 18**: Latest stable version
 - **TypeScript**: Strict mode enabled
 - **Tailwind CSS**: Utility-first CSS framework
@@ -140,7 +140,7 @@ Custom Daikin Tucson colors defined in `tailwind.config.ts`:
 ## Phase Roadmap
 
 ### Phase 0: Foundation Setup ✅ COMPLETE
-- [x] Next.js 14 with Pages Router
+- [x] Next.js 15 with Pages Router
 - [x] TypeScript configuration
 - [x] Tailwind CSS setup
 - [x] Project structure

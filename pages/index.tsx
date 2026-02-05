@@ -17,7 +17,7 @@ export default function HomePage() {
             </h1>
             
             <p className="text-xl text-daikin-mediumGray max-w-3xl mx-auto">
-              Phase 0 Foundation Complete - Next.js 14 with Pages Router, TypeScript, and Tailwind CSS
+              Phase 0 Foundation Complete - Next.js 15 with Pages Router, TypeScript, and Tailwind CSS
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-8">
