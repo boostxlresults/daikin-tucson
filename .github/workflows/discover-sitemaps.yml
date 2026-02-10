@@ -1,1 +1,31 @@
-name: Discover Sitemaps\n\non: workflow_dispatch:\n\njobs:\n  discover-sitemaps:\n    runs-on: ubuntu-latest:\n    steps:\n      - name: Checkout repository\n        uses: actions/checkout@v2\n\n      - name: Run discover sitemaps script\n        run: node scripts/discover-sitemaps.js\n\n      - name: Upload artifacts\n        uses: actions/upload-artifact@v2\n        with:\n          name: sitemap-artifacts\n          path: artifacts/url-inventory.json,artifacts/url-inventory.csv,artifacts/sitemap-counts.json\n
+name: Discover Sitemaps
+
+on: workflow_dispatch
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run sitemap discovery
+        run: node scripts/discover-sitemaps.js
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sitemap-discovery-artifacts
+          path: |
+            artifacts/url-inventory.json
+            artifacts/url-inventory.csv
+            artifacts/sitemap-counts.json
+          retention-days: 30
