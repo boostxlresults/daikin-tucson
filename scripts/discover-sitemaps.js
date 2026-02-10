@@ -1,69 +1,147 @@
-const https = require('https');
-const fs = require('fs');
-const path = require('path');
+#!/usr/bin/env node
+/* eslint-disable no-console */
 
-const sitemapUrl = 'https://daikintucson.com/sitemap_index.xml';
-const artifactsDir = path.join(__dirname, 'artifacts');
+const fs = require("fs");
+const path = require("path");
+const { XMLParser } = require("fast-xml-parser");
 
-// Function to fetch the URL
-const fetchURL = (url) => {
-    return new Promise((resolve, reject) => {
-        https.get(url, (response) => {
-            let data = '';
-            response.on('data', (chunk) => data += chunk);
-            response.on('end', () => resolve(data));
-        }).on('error', (error) => reject(error));
-    });
-};
+const SITEMAP_INDEX_URL = "https://daikintucson.com/sitemap_index.xml";
+const ARTIFACTS_DIR = path.join(process.cwd(), "artifacts");
 
-// Function to parse XML and extract data
-const parseXML = (xml) => {
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(xml, 'text/xml');
-    return Array.from(xmlDoc.getElementsByTagName('sitemap')).map(sitemap => ({
-        loc: sitemap.getElementsByTagName('loc')[0].textContent,
-        lastmod: sitemap.getElementsByTagName('lastmod')[0].textContent,
-    }));
-};
+const parser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: "@_",
+  trimValues: true,
+  parseTagValue: true,
+  parseAttributeValue: true,
+});
 
-// Main function to fetch and process sitemaps
-const processSitemaps = async () => {
-    try {
-        const xml = await fetchURL(sitemapUrl);
-        const sitemaps = parseXML(xml);
+async function fetchText(url) {
+  const res = await fetch(url, { redirect: "follow" });
+  if (!res.ok) throw new Error(`Fetch failed ${res.status} for ${url}`);
+  return await res.text();
+}
 
-        // Create artifacts directory if it doesn't exist
-        if (!fs.existsSync(artifactsDir)) {
-            fs.mkdirSync(artifactsDir);
-        }
+function asArray(x) {
+  if (!x) return [];
+  return Array.isArray(x) ? x : [x];
+}
 
-        // Prepare data to write to files
-        const urlInventory = [];
-        const sitemapCounts = {};
+function parseSitemapIndex(xml) {
+  const json = parser.parse(xml);
+  const sitemaps = asArray(json?.sitemapindex?.sitemap).map((s) => ({
+    loc: s?.loc || "",
+    lastmod: s?.lastmod || "",
+  }));
+  return sitemaps.filter((s) => s.loc);
+}
 
-        for (const sitemap of sitemaps) {
-            const childXml = await fetchURL(sitemap.loc);
-            const urls = parseXML(childXml);
-            urls.forEach(url => {
-                urlInventory.push(url);
-            });
-            sitemapCounts[sitemap.loc] = urls.length;
-        }
+function parseUrlset(xml) {
+  const json = parser.parse(xml);
+  const urls = asArray(json?.urlset?.url).map((u) => ({
+    loc: u?.loc || "",
+    lastmod: u?.lastmod || "",
+    priority: u?.priority || "",
+    changefreq: u?.changefreq || "",
+  }));
+  return urls.filter((u) => u.loc);
+}
 
-        // Write url-inventory.json
-        fs.writeFileSync(path.join(artifactsDir, 'url-inventory.json'), JSON.stringify(urlInventory, null, 2));
+function ensureArtifactsDir() {
+  fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
+}
 
-        // Write url-inventory.csv
-        const csvContent = 'loc,lastmod\n' + urlInventory.map(url => `${url.loc},${url.lastmod}`).join('\n');
-        fs.writeFileSync(path.join(artifactsDir, 'url-inventory.csv'), csvContent);
+function writeJson(filename, data) {
+  fs.writeFileSync(path.join(ARTIFACTS_DIR, filename), JSON.stringify(data, null, 2), "utf8");
+}
 
-        // Write sitemap-counts.json
-        fs.writeFileSync(path.join(artifactsDir, 'sitemap-counts.json'), JSON.stringify(sitemapCounts, null, 2));
+function writeText(filename, data) {
+  fs.writeFileSync(path.join(ARTIFACTS_DIR, filename), data, "utf8");
+}
 
-        console.log('Artifacts generated successfully in artifacts directory.');
-    } catch (error) {
-        console.error('Error processing sitemaps:', error);
+async function main() {
+  ensureArtifactsDir();
+
+  console.log(`Fetching sitemap index: ${SITEMAP_INDEX_URL}`);
+  const indexXml = await fetchText(SITEMAP_INDEX_URL);
+  const sitemapRefs = parseSitemapIndex(indexXml);
+
+  if (sitemapRefs.length === 0) {
+    throw new Error("No sitemaps discovered in sitemap_index.xml");
+  }
+
+  const inventory = [];
+  const counts = [];
+
+  let totalUrls = 0;
+
+  for (const ref of sitemapRefs) {
+    console.log(`Fetching sitemap: ${ref.loc}`);
+    const smXml = await fetchText(ref.loc);
+
+    // Some child sitemaps can themselves be sitemap indexes, so handle both
+    const childIndex = parseSitemapIndex(smXml);
+    if (childIndex.length > 0) {
+      // Nested sitemap index
+      for (const nested of childIndex) {
+        console.log(`  Nested sitemap: ${nested.loc}`);
+        const nestedXml = await fetchText(nested.loc);
+        const urls = parseUrlset(nestedXml);
+        counts.push({ sitemap: nested.loc, urlCount: urls.length });
+        totalUrls += urls.length;
+        for (const u of urls) inventory.push({ ...u, sitemap: nested.loc });
+      }
+      continue;
     }
-};
 
-processSitemaps();
+    // Normal urlset
+    const urls = parseUrlset(smXml);
+    counts.push({ sitemap: ref.loc, urlCount: urls.length });
+    totalUrls += urls.length;
+    for (const u of urls) inventory.push({ ...u, sitemap: ref.loc });
+  }
+
+  // JSON
+  writeJson("url-inventory.json", {
+    metadata: {
+      discoveredAt: new Date().toISOString(),
+      sitemapIndexUrl: SITEMAP_INDEX_URL,
+      totalUrls,
+      sitemapsDiscovered: counts.length,
+    },
+    urls: inventory,
+    sitemapCounts: counts,
+  });
+
+  // CSV
+  const header = ["loc", "lastmod", "priority", "changefreq", "sitemap"];
+  const csvRows = [header.join(",")].concat(
+    inventory.map((u) =>
+      [
+        u.loc,
+        u.lastmod || "",
+        u.priority || "",
+        u.changefreq || "",
+        u.sitemap || "",
+      ]
+        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .join(",")
+    )
+  );
+  writeText("url-inventory.csv", csvRows.join("\n"));
+
+  // counts JSON
+  writeJson("sitemap-counts.json", {
+    discoveredAt: new Date().toISOString(),
+    sitemapIndexUrl: SITEMAP_INDEX_URL,
+    totals: { totalUrlsDiscovered: totalUrls, sitemapsFound: counts.length },
+    sitemaps: counts,
+  });
+
+  console.log(`Done. URLs: ${totalUrls}, sitemaps: ${counts.length}, output: ${ARTIFACTS_DIR}`);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
